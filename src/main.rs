@@ -1,8 +1,10 @@
 use clap::arg;
 use comrak::{markdown_to_html, ComrakOptions};
+use imap;
 use mail_builder::headers as b_headers;
 use mail_builder::headers::HeaderType;
 use mail_builder::MessageBuilder;
+use native_tls;
 
 use base64::{engine::general_purpose, Engine as _};
 use mail_parser::{Addr, HeaderName, HeaderValue, Message, MessagePart, PartType, RfcHeader};
@@ -89,6 +91,15 @@ fn main() {
         .args(vec![
             arg!(--genhtml "Generate html body from markdown in text body"),
             arg!(--addpixel <BASE_URL> "Add tracking pixel to html body").requires("genhtml"),
+            arg!(--putonimap <MAILBOX> "Put email on IMAP server")
+                .requires("server")
+                .requires("port")
+                .requires("user")
+                .requires("password"),
+            arg!(--server <SERVER> "IMAP server uri"),
+            arg!(--port <PORT> "IMAP server port"),
+            arg!(--user <USER> "IMAP user name"),
+            arg!(--password <PASS> "IMAP password"),
         ])
         .get_matches();
 
@@ -122,6 +133,37 @@ fn main() {
         }
         None => None,
     };
+
+    match (
+        matches.get_one::<String>("putonimap"),
+        matches.get_one::<String>("server"),
+        matches
+            .get_one::<String>("port")
+            .unwrap_or(&String::from("933"))
+            .parse::<u16>(),
+        matches.get_one::<String>("user"),
+        matches.get_one::<String>("password"),
+    ) {
+        (Some(mailbox), Some(server), Ok(port), Some(user), Some(pass)) => {
+            let tls = native_tls::TlsConnector::builder().build().unwrap();
+            let client = imap::connect((server.to_owned(), port), server, &tls).unwrap();
+            let mut imap_session = client.login(user, pass).map_err(|e| e.0).unwrap();
+            let mut eml_to_store = eml.clone();
+
+            if matches.get_flag("genhtml") {
+                eml_to_store = eml_to_store.html_body(text_body_as_html(&message, None))
+            };
+
+            imap_session
+                .append_with_flags(
+                    mailbox,
+                    eml_to_store.write_to_vec().unwrap(),
+                    &[imap::types::Flag::Seen],
+                )
+                .unwrap()
+        }
+        (_, _, _, _, _) => (),
+    }
 
     if matches.get_flag("genhtml") {
         eml = eml.html_body(text_body_as_html(&message, append));
