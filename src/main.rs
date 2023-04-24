@@ -51,27 +51,23 @@ fn transform_address(address: Addr) -> b_headers::address::Address {
 fn copy_headers<'a>(source: &'a Message, dest: MessageBuilder<'a>) -> MessageBuilder<'a> {
     let mut new_dest = dest.clone();
     for header in source.headers() {
-        let new_header = match header.value().clone() {
-            HeaderValue::Address(address) => HeaderType::Address(transform_address(address)),
-            HeaderValue::Text(text) => HeaderType::Text(b_headers::text::Text::new(text)),
-            HeaderValue::DateTime(datetime) => {
-                HeaderType::Date(b_headers::date::Date::new(datetime.to_timestamp()))
-            }
-            HeaderValue::ContentType(conent_type) => {
-                let mut ctype = conent_type.ctype().to_owned();
-                if let Some(subtype) = conent_type.subtype() {
-                    ctype.push_str("/");
-                    ctype.push_str(subtype);
-                }
-                HeaderType::ContentType(b_headers::content_type::ContentType::new(ctype))
-            }
+        let maybe_header = match header.value().clone() {
+            HeaderValue::Address(address) => Some(HeaderType::Address(transform_address(address))),
+            HeaderValue::Text(text) => Some(HeaderType::Text(b_headers::text::Text::new(text))),
+            HeaderValue::DateTime(datetime) => Some(HeaderType::Date(b_headers::date::Date::new(
+                datetime.to_timestamp(),
+            ))),
+            // content will be generated automatically, it will mess up email if copied here
+            HeaderValue::ContentType(_) => None,
             HeaderValue::AddressList(addresses) => {
                 let mut new_addresses = vec![];
                 addresses.iter().for_each(|address| {
                     let new_address = transform_address(address.clone());
                     new_addresses.push(new_address);
                 });
-                HeaderType::Address(b_headers::address::Address::List(new_addresses))
+                Some(HeaderType::Address(b_headers::address::Address::List(
+                    new_addresses,
+                )))
             }
             HeaderValue::Group(group) => todo!("Group not implemented {:?}", group),
             HeaderValue::GroupList(group_list) => {
@@ -80,7 +76,12 @@ fn copy_headers<'a>(source: &'a Message, dest: MessageBuilder<'a>) -> MessageBui
             HeaderValue::TextList(text_list) => todo!("Text list not implemented {:?}", text_list),
             HeaderValue::Empty => todo!("Empty not implemented"),
         };
-        new_dest = new_dest.header(header.name(), new_header);
+        match maybe_header {
+            Some(new_header) => {
+                new_dest = new_dest.header(header.name(), new_header);
+            }
+            None => (),
+        };
     }
     new_dest
 }
