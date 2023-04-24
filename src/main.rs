@@ -87,7 +87,8 @@ fn main() {
     let matches = clap::Command::new("cargo")
         .about("Email enrich tool for mutt")
         .args(vec![
-            arg!(--addpixel <BASE_URL> "Add tracking pixel to html body"),
+            arg!(--genhtml "Generate html body from markdown in text body"),
+            arg!(--addpixel <BASE_URL> "Add tracking pixel to html body").requires("genhtml"),
         ])
         .get_matches();
 
@@ -102,9 +103,7 @@ fn main() {
 
     let message = Message::parse(input.as_bytes()).unwrap();
 
-    let mut eml = MessageBuilder::new()
-        .text_body(text_body(&message))
-        .html_body(text_body_as_html(&message, None));
+    let mut eml = MessageBuilder::new().text_body(text_body(&message));
 
     eml = copy_headers(&message, eml);
     eml = copy_attachments(&message, eml);
@@ -124,7 +123,9 @@ fn main() {
         None => None,
     };
 
-    eml = eml.html_body(text_body_as_html(&message, append));
+    if matches.get_flag("genhtml") {
+        eml = eml.html_body(text_body_as_html(&message, append));
+    }
     println!("{}", eml.write_to_string().unwrap());
 }
 
