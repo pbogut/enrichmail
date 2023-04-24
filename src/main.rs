@@ -1,8 +1,10 @@
+use clap::arg;
 use comrak::{markdown_to_html, ComrakOptions};
 use mail_builder::headers as b_headers;
 use mail_builder::headers::HeaderType;
 use mail_builder::MessageBuilder;
 
+use base64::{engine::general_purpose, Engine as _};
 use mail_parser::{Addr, HeaderName, HeaderValue, Message, MessagePart, PartType, RfcHeader};
 
 fn text_body(message: &Message) -> String {
@@ -55,12 +57,10 @@ fn copy_headers<'a>(source: &'a Message, dest: MessageBuilder<'a>) -> MessageBui
             }
             HeaderValue::ContentType(conent_type) => {
                 let mut ctype = conent_type.ctype().to_owned();
-                // dbg!(&ctype);
                 if let Some(subtype) = conent_type.subtype() {
                     ctype.push_str("/");
                     ctype.push_str(subtype);
                 }
-                // dbg!(&ctype);
                 HeaderType::ContentType(b_headers::content_type::ContentType::new(ctype))
             }
             HeaderValue::AddressList(addresses) => {
@@ -84,6 +84,13 @@ fn copy_headers<'a>(source: &'a Message, dest: MessageBuilder<'a>) -> MessageBui
 }
 
 fn main() {
+    let matches = clap::Command::new("cargo")
+        .about("Email enrich tool for mutt")
+        .args(vec![
+            arg!(--addpixel <BASE_URL> "Add tracking pixel to html body"),
+        ])
+        .get_matches();
+
     let stdin = std::io::stdin();
     let mut input = String::new();
 
@@ -102,6 +109,22 @@ fn main() {
     eml = copy_headers(&message, eml);
     eml = copy_attachments(&message, eml);
 
+    let append = match matches.get_one::<String>("addpixel") {
+        Some(tracking_url) => {
+            let encoded_id: String =
+                general_purpose::STANDARD_NO_PAD.encode(message.message_id().unwrap().to_owned());
+
+            let pixel_url = format!("{}/image/{}.gif", tracking_url, encoded_id);
+            let pixel = format!(
+                "<img src=\"{}\" alt=\"Open pixel\" style=\"border: 0px; width: 0px; max-width: 1px;\" />",
+                pixel_url
+            );
+            Some(pixel)
+        }
+        None => None,
+    };
+
+    eml = eml.html_body(text_body_as_html(&message, append));
     println!("{}", eml.write_to_string().unwrap());
 }
 
