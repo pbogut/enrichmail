@@ -185,7 +185,25 @@ fn main() {
 
     let mut eml = get_builder_from_parser(&message);
 
+    handle_put_email_on_imap_server(&eml, &message, &matches);
 
+    let append = match matches.get_one::<String>("add-pixel") {
+        Some(tracking_url) => Some(get_pixel_element(tracking_url, &message)),
+        None => None,
+    };
+
+    if matches.get_flag("generate-html") {
+        eml = eml.html_body(text_body_as_html(&message, append));
+    }
+
+    println!("{}", eml.write_to_string().unwrap());
+}
+
+fn handle_put_email_on_imap_server(
+    eml: &MessageBuilder,
+    message: &Message,
+    matches: &clap::ArgMatches,
+) {
     match (
         matches.get_one::<String>("put-on-imap"),
         matches.get_one::<String>("server"),
@@ -204,19 +222,9 @@ fn main() {
             };
             put_email_on_imap_server(eml_to_store, mailbox, server, port, user, pass);
         }
-        (_, _, _, _, _, _) => (),
+        (None, _, _, _, _, _) => (),
+        (_, _, _, _, _, _) => panic!("Missing arguments for put-on-imap"),
     }
-
-    let append = match matches.get_one::<String>("add-pixel") {
-        Some(tracking_url) => Some(get_pixel_element(tracking_url, &message)),
-        None => None,
-    };
-
-    if matches.get_flag("generate-html") {
-        eml = eml.html_body(text_body_as_html(&message, append));
-    }
-
-    println!("{}", eml.write_to_string().unwrap());
 }
 
 fn get_file_name(attachment: &MessagePart) -> String {
