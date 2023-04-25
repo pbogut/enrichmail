@@ -161,6 +161,13 @@ fn put_email_on_imap_server(
         .unwrap()
 }
 
+fn get_builder_from_parser<'a>(message: &'a Message) -> MessageBuilder<'a> {
+    let mut eml = MessageBuilder::new().text_body(text_body(&message));
+    eml = copy_headers(eml, &message);
+    eml = copy_attachments(eml, &message);
+    eml
+}
+
 fn main() {
     let matches = cli().get_matches();
 
@@ -176,10 +183,8 @@ fn main() {
         return;
     }
 
-    let mut eml = MessageBuilder::new().text_body(text_body(&message));
+    let mut eml = get_builder_from_parser(&message);
 
-    eml = copy_headers(eml, &message);
-    eml = copy_attachments(eml, &message);
 
     match (
         matches.get_one::<String>("put-on-imap"),
