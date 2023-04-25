@@ -236,21 +236,19 @@ fn get_content_type(attachment: &MessagePart) -> String {
 }
 
 fn copy_attachments<'a>(mut dest: MessageBuilder<'a>, source: &'a Message) -> MessageBuilder<'a> {
-    source.attachments().for_each(|attachment| {
+    for attachment in source.attachments() {
         let content_type = get_content_type(&attachment);
         let file_name = get_file_name(&attachment);
 
-        match attachment.body.clone() {
+        match &attachment.body {
             PartType::Binary(body) => {
-                dest = dest
-                    .clone()
-                    .binary_attachment(content_type, file_name, body);
+                dest = dest.binary_attachment(content_type, file_name, body.clone());
             }
             PartType::Text(body) => {
-                dest = dest.clone().text_attachment(content_type, file_name, body);
+                dest = dest.text_attachment(content_type, file_name, body.clone());
             }
             _ => (),
         }
-    });
+    }
     dest
 }
