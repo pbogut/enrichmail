@@ -1,5 +1,5 @@
 use base64::{engine::general_purpose, Engine as _};
-use clap::arg;
+use clap::{arg, Command};
 use comrak::{markdown_to_html, ComrakOptions};
 use imap;
 use mail_builder::headers as b_headers;
@@ -10,6 +10,27 @@ use native_tls;
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
+
+fn cli() -> Command {
+    Command::new("cargo")
+        .about("Email enrich tool for mutt")
+        .args(vec![
+            arg!(<FILE> "path to email file  (use '-' for stdin)"),
+            arg!(--"html-preview" "Generate html from markdown in text body and prints it"),
+            arg!(--"generate-html" "Generate html body from markdown in text body"),
+            arg!(--"add-pixel" <BASE_URL> "Add tracking pixel to html body")
+                .requires("generate-html"),
+            arg!(--"put-on-imap" <MAILBOX> "Put email on IMAP server")
+                .requires("server")
+                .requires("port")
+                .requires("user")
+                .requires("password"),
+            arg!(--server <SERVER> "IMAP server uri"),
+            arg!(--port <PORT> "IMAP server port"),
+            arg!(--user <USER> "IMAP user name"),
+            arg!(--password <PASS> "IMAP password"),
+        ])
+}
 
 fn text_body(message: &Message) -> String {
     message.body_text(0).unwrap().to_owned().to_string()
@@ -89,25 +110,7 @@ fn copy_headers<'a>(source: &'a Message, dest: MessageBuilder<'a>) -> MessageBui
 }
 
 fn main() {
-    let matches = clap::Command::new("cargo")
-        .about("Email enrich tool for mutt")
-        .args(vec![
-            arg!(<FILE> "path to email file  (use '-' for stdin)"),
-            arg!(--"html-preview" "Generate html from markdown in text body and prints it"),
-            arg!(--"generate-html" "Generate html body from markdown in text body"),
-            arg!(--"add-pixel" <BASE_URL> "Add tracking pixel to html body")
-                .requires("generate-html"),
-            arg!(--"put-on-imap" <MAILBOX> "Put email on IMAP server")
-                .requires("server")
-                .requires("port")
-                .requires("user")
-                .requires("password"),
-            arg!(--server <SERVER> "IMAP server uri"),
-            arg!(--port <PORT> "IMAP server port"),
-            arg!(--user <USER> "IMAP user name"),
-            arg!(--password <PASS> "IMAP password"),
-        ])
-        .get_matches();
+    let matches = cli().get_matches();
 
     let file = match matches.get_one::<String>("FILE") {
         Some(file_path) => {
@@ -122,7 +125,6 @@ fn main() {
                 }
                 input.as_bytes().to_vec()
             } else {
-                // let mut file_content: Vec<u8> = vec![];
                 let mut file_content = vec![];
                 let path = Path::new(file_path);
                 let mut fh = File::open(&path).expect("Unable to open file");
