@@ -128,6 +128,18 @@ fn get_email_content(file_path: &String) -> Vec<u8> {
     }
 }
 
+fn get_pixel_element(tracking_url: &String, message: &Message) -> String {
+    let encoded_id: String =
+        general_purpose::STANDARD_NO_PAD.encode(message.message_id().unwrap().to_owned());
+    let pixel_url = format!("{}/image/{}.gif", tracking_url, encoded_id);
+    format!(
+        r#"
+        <img src="{}" alt="Open pixel" style="border: 0px; width: 0px; max-width: 1px;" />
+        "#,
+        pixel_url
+    )
+}
+
 fn main() {
     let matches = cli().get_matches();
 
@@ -149,17 +161,7 @@ fn main() {
     eml = copy_attachments(eml, &message);
 
     let append = match matches.get_one::<String>("add-pixel") {
-        Some(tracking_url) => {
-            let encoded_id: String =
-                general_purpose::STANDARD_NO_PAD.encode(message.message_id().unwrap().to_owned());
-
-            let pixel_url = format!("{}/image/{}.gif", tracking_url, encoded_id);
-            let pixel = format!(
-                "<img src=\"{}\" alt=\"Open pixel\" style=\"border: 0px; width: 0px; max-width: 1px;\" />",
-                pixel_url
-            );
-            Some(pixel)
-        }
+        Some(tracking_url) => Some(get_pixel_element(tracking_url, &message)),
         None => None,
     };
 
