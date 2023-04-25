@@ -1,13 +1,15 @@
+use base64::{engine::general_purpose, Engine as _};
 use clap::arg;
 use comrak::{markdown_to_html, ComrakOptions};
 use imap;
 use mail_builder::headers as b_headers;
 use mail_builder::headers::HeaderType;
 use mail_builder::MessageBuilder;
-use native_tls;
-
-use base64::{engine::general_purpose, Engine as _};
 use mail_parser::{Addr, HeaderName, HeaderValue, Message, MessagePart, PartType, RfcHeader};
+use native_tls;
+use std::fs::File;
+use std::io::prelude::*;
+use std::path::Path;
 
 fn text_body(message: &Message) -> String {
     message.body_text(0).unwrap().to_owned().to_string()
@@ -90,6 +92,7 @@ fn main() {
     let matches = clap::Command::new("cargo")
         .about("Email enrich tool for mutt")
         .args(vec![
+            arg!(<FILE> "path to email file  (use '-' for stdin)"),
             arg!(--"html-preview" "Generate html from markdown in text body and prints it"),
             arg!(--genhtml "Generate html body from markdown in text body"),
             arg!(--addpixel <BASE_URL> "Add tracking pixel to html body").requires("genhtml"),
@@ -105,16 +108,32 @@ fn main() {
         ])
         .get_matches();
 
-    let stdin = std::io::stdin();
-    let mut input = String::new();
+    let file = match matches.get_one::<String>("FILE") {
+        Some(file_path) => {
+            if file_path == "-" {
+                let stdin = std::io::stdin();
+                let mut input = String::new();
 
-    while let Ok(n) = stdin.read_line(&mut input) {
-        if n == 0 {
-            break;
+                while let Ok(n) = stdin.read_line(&mut input) {
+                    if n == 0 {
+                        break;
+                    }
+                }
+                input.as_bytes().to_vec()
+            } else {
+                // let mut file_content: Vec<u8> = vec![];
+                let mut file_content = vec![];
+                let path = Path::new(file_path);
+                let mut fh = File::open(&path).expect("Unable to open file");
+                fh.read_to_end(&mut file_content).expect("Unable to read");
+                file_content
+            }
         }
-    }
+        None => panic!("No email file provided"),
+    };
 
-    let message = Message::parse(input.as_bytes()).unwrap();
+    let message = Message::parse(file.as_slice()).unwrap();
+
     if matches.get_flag("html-preview") {
         println!("{}", text_body_as_html(&message, None));
         return;
@@ -174,6 +193,7 @@ fn main() {
     if matches.get_flag("genhtml") {
         eml = eml.html_body(text_body_as_html(&message, append));
     }
+
     println!("{}", eml.write_to_string().unwrap());
 }
 
