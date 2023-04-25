@@ -90,6 +90,7 @@ fn main() {
     let matches = clap::Command::new("cargo")
         .about("Email enrich tool for mutt")
         .args(vec![
+            arg!(--"html-preview" "Generate html from markdown in text body and prints it"),
             arg!(--genhtml "Generate html body from markdown in text body"),
             arg!(--addpixel <BASE_URL> "Add tracking pixel to html body").requires("genhtml"),
             arg!(--putonimap <MAILBOX> "Put email on IMAP server")
@@ -114,6 +115,10 @@ fn main() {
     }
 
     let message = Message::parse(input.as_bytes()).unwrap();
+    if matches.get_flag("html-preview") {
+        println!("{}", text_body_as_html(&message, None));
+        return;
+    }
 
     let mut eml = MessageBuilder::new().text_body(text_body(&message));
 
