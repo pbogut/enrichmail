@@ -32,6 +32,37 @@ fn cli() -> Command {
         ])
 }
 
+fn main() {
+    let matches = cli().get_matches();
+
+    let file = match matches.get_one::<String>("FILE") {
+        Some(file_path) => get_email_content(file_path),
+        None => panic!("No email file provided"),
+    };
+
+    let message = Message::parse(file.as_slice()).unwrap();
+
+    if matches.get_flag("html-preview") {
+        println!("{}", text_body_as_html(&message, None));
+        return;
+    }
+
+    let mut eml = get_builder_from_parser(&message);
+
+    handle_put_email_on_imap_server(&eml, &message, &matches);
+
+    let append = match matches.get_one::<String>("add-pixel") {
+        Some(tracking_url) => Some(get_pixel_element(tracking_url, &message)),
+        None => None,
+    };
+
+    if matches.get_flag("generate-html") {
+        eml = eml.html_body(text_body_as_html(&message, append));
+    }
+
+    println!("{}", eml.write_to_string().unwrap());
+}
+
 fn text_body(message: &Message) -> String {
     message.body_text(0).unwrap().to_owned().to_string()
 }
@@ -166,37 +197,6 @@ fn get_builder_from_parser<'a>(message: &'a Message) -> MessageBuilder<'a> {
     eml = copy_headers(eml, &message);
     eml = copy_attachments(eml, &message);
     eml
-}
-
-fn main() {
-    let matches = cli().get_matches();
-
-    let file = match matches.get_one::<String>("FILE") {
-        Some(file_path) => get_email_content(file_path),
-        None => panic!("No email file provided"),
-    };
-
-    let message = Message::parse(file.as_slice()).unwrap();
-
-    if matches.get_flag("html-preview") {
-        println!("{}", text_body_as_html(&message, None));
-        return;
-    }
-
-    let mut eml = get_builder_from_parser(&message);
-
-    handle_put_email_on_imap_server(&eml, &message, &matches);
-
-    let append = match matches.get_one::<String>("add-pixel") {
-        Some(tracking_url) => Some(get_pixel_element(tracking_url, &message)),
-        None => None,
-    };
-
-    if matches.get_flag("generate-html") {
-        eml = eml.html_body(text_body_as_html(&message, append));
-    }
-
-    println!("{}", eml.write_to_string().unwrap());
 }
 
 fn handle_put_email_on_imap_server(
