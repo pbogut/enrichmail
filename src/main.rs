@@ -71,8 +71,7 @@ fn transform_address(address: Addr) -> b_headers::address::Address {
     b_headers::address::Address::new_address(name, address.address.as_ref().unwrap().to_owned())
 }
 
-fn copy_headers<'a>(source: &'a Message, dest: MessageBuilder<'a>) -> MessageBuilder<'a> {
-    let mut new_dest = dest.clone();
+fn copy_headers<'a>(mut dest: MessageBuilder<'a>, source: &'a Message) -> MessageBuilder<'a> {
     for header in source.headers() {
         let maybe_header = match header.value().clone() {
             HeaderValue::Address(address) => Some(HeaderType::Address(transform_address(address))),
@@ -101,12 +100,12 @@ fn copy_headers<'a>(source: &'a Message, dest: MessageBuilder<'a>) -> MessageBui
         };
         match maybe_header {
             Some(new_header) => {
-                new_dest = new_dest.header(header.name(), new_header);
+                dest = dest.header(header.name(), new_header);
             }
             None => (),
         };
     }
-    new_dest
+    dest
 }
 
 fn get_email_content(file_path: &String) -> Vec<u8> {
@@ -146,8 +145,8 @@ fn main() {
 
     let mut eml = MessageBuilder::new().text_body(text_body(&message));
 
-    eml = copy_headers(&message, eml);
-    eml = copy_attachments(&message, eml);
+    eml = copy_headers(eml, &message);
+    eml = copy_attachments(eml, &message);
 
     let append = match matches.get_one::<String>("add-pixel") {
         Some(tracking_url) => {
@@ -236,26 +235,22 @@ fn get_content_type(attachment: &MessagePart) -> String {
     result
 }
 
-fn copy_attachments<'a>(source: &'a Message, dest: MessageBuilder<'a>) -> MessageBuilder<'a> {
-    let mut new_dest = dest.clone();
-
+fn copy_attachments<'a>(mut dest: MessageBuilder<'a>, source: &'a Message) -> MessageBuilder<'a> {
     source.attachments().for_each(|attachment| {
         let content_type = get_content_type(&attachment);
         let file_name = get_file_name(&attachment);
 
         match attachment.body.clone() {
             PartType::Binary(body) => {
-                new_dest = new_dest
+                dest = dest
                     .clone()
                     .binary_attachment(content_type, file_name, body);
             }
             PartType::Text(body) => {
-                new_dest = new_dest
-                    .clone()
-                    .text_attachment(content_type, file_name, body);
+                dest = dest.clone().text_attachment(content_type, file_name, body);
             }
             _ => (),
         }
     });
-    new_dest
+    dest
 }
