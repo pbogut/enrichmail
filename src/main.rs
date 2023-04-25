@@ -94,9 +94,10 @@ fn main() {
         .args(vec![
             arg!(<FILE> "path to email file  (use '-' for stdin)"),
             arg!(--"html-preview" "Generate html from markdown in text body and prints it"),
-            arg!(--genhtml "Generate html body from markdown in text body"),
-            arg!(--addpixel <BASE_URL> "Add tracking pixel to html body").requires("genhtml"),
-            arg!(--putonimap <MAILBOX> "Put email on IMAP server")
+            arg!(--"generate-html" "Generate html body from markdown in text body"),
+            arg!(--"add-pixel" <BASE_URL> "Add tracking pixel to html body")
+                .requires("generate-html"),
+            arg!(--"put-on-imap" <MAILBOX> "Put email on IMAP server")
                 .requires("server")
                 .requires("port")
                 .requires("user")
@@ -144,7 +145,7 @@ fn main() {
     eml = copy_headers(&message, eml);
     eml = copy_attachments(&message, eml);
 
-    let append = match matches.get_one::<String>("addpixel") {
+    let append = match matches.get_one::<String>("add-pixel") {
         Some(tracking_url) => {
             let encoded_id: String =
                 general_purpose::STANDARD_NO_PAD.encode(message.message_id().unwrap().to_owned());
@@ -160,7 +161,7 @@ fn main() {
     };
 
     match (
-        matches.get_one::<String>("putonimap"),
+        matches.get_one::<String>("put-on-imap"),
         matches.get_one::<String>("server"),
         matches
             .get_one::<String>("port")
@@ -175,7 +176,7 @@ fn main() {
             let mut imap_session = client.login(user, pass).map_err(|e| e.0).unwrap();
             let mut eml_to_store = eml.clone();
 
-            if matches.get_flag("genhtml") {
+            if matches.get_flag("generate-html") {
                 eml_to_store = eml_to_store.html_body(text_body_as_html(&message, None))
             };
 
@@ -190,7 +191,7 @@ fn main() {
         (_, _, _, _, _) => (),
     }
 
-    if matches.get_flag("genhtml") {
+    if matches.get_flag("generate-html") {
         eml = eml.html_body(text_body_as_html(&message, append));
     }
 
