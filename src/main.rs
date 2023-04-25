@@ -109,29 +109,31 @@ fn copy_headers<'a>(source: &'a Message, dest: MessageBuilder<'a>) -> MessageBui
     new_dest
 }
 
+fn get_email_content(file_path: &String) -> Vec<u8> {
+    if file_path == "-" {
+        let stdin = std::io::stdin();
+        let mut input = String::new();
+
+        while let Ok(n) = stdin.read_line(&mut input) {
+            if n == 0 {
+                break;
+            }
+        }
+        input.as_bytes().to_vec()
+    } else {
+        let mut file_content = vec![];
+        let path = Path::new(file_path);
+        let mut fh = File::open(&path).expect("Unable to open file");
+        fh.read_to_end(&mut file_content).expect("Unable to read");
+        file_content
+    }
+}
+
 fn main() {
     let matches = cli().get_matches();
 
     let file = match matches.get_one::<String>("FILE") {
-        Some(file_path) => {
-            if file_path == "-" {
-                let stdin = std::io::stdin();
-                let mut input = String::new();
-
-                while let Ok(n) = stdin.read_line(&mut input) {
-                    if n == 0 {
-                        break;
-                    }
-                }
-                input.as_bytes().to_vec()
-            } else {
-                let mut file_content = vec![];
-                let path = Path::new(file_path);
-                let mut fh = File::open(&path).expect("Unable to open file");
-                fh.read_to_end(&mut file_content).expect("Unable to read");
-                file_content
-            }
-        }
+        Some(file_path) => get_email_content(file_path),
         None => panic!("No email file provided"),
     };
 
