@@ -140,6 +140,27 @@ fn get_pixel_element(tracking_url: &String, message: &Message) -> String {
     )
 }
 
+fn put_email_on_imap_server(
+    eml: MessageBuilder,
+    mailbox: &String,
+    server: &String,
+    port: u16,
+    user: &String,
+    pass: &String,
+) {
+    let tls = native_tls::TlsConnector::builder().build().unwrap();
+    let client = imap::connect((server.to_owned(), port), server, &tls).unwrap();
+    let mut imap_session = client.login(user, pass).map_err(|e| e.0).unwrap();
+
+    imap_session
+        .append_with_flags(
+            mailbox,
+            eml.write_to_vec().unwrap(),
+            &[imap::types::Flag::Seen],
+        )
+        .unwrap()
+}
+
 fn main() {
     let matches = cli().get_matches();
 
@@ -160,11 +181,6 @@ fn main() {
     eml = copy_headers(eml, &message);
     eml = copy_attachments(eml, &message);
 
-    let append = match matches.get_one::<String>("add-pixel") {
-        Some(tracking_url) => Some(get_pixel_element(tracking_url, &message)),
-        None => None,
-    };
-
     match (
         matches.get_one::<String>("put-on-imap"),
         matches.get_one::<String>("server"),
@@ -174,27 +190,22 @@ fn main() {
             .parse::<u16>(),
         matches.get_one::<String>("user"),
         matches.get_one::<String>("password"),
+        matches.get_flag("generate-html"),
     ) {
-        (Some(mailbox), Some(server), Ok(port), Some(user), Some(pass)) => {
-            let tls = native_tls::TlsConnector::builder().build().unwrap();
-            let client = imap::connect((server.to_owned(), port), server, &tls).unwrap();
-            let mut imap_session = client.login(user, pass).map_err(|e| e.0).unwrap();
+        (Some(mailbox), Some(server), Ok(port), Some(user), Some(pass), generate_html) => {
             let mut eml_to_store = eml.clone();
-
-            if matches.get_flag("generate-html") {
+            if generate_html {
                 eml_to_store = eml_to_store.html_body(text_body_as_html(&message, None))
             };
-
-            imap_session
-                .append_with_flags(
-                    mailbox,
-                    eml_to_store.write_to_vec().unwrap(),
-                    &[imap::types::Flag::Seen],
-                )
-                .unwrap()
+            put_email_on_imap_server(eml_to_store, mailbox, server, port, user, pass);
         }
-        (_, _, _, _, _) => (),
+        (_, _, _, _, _, _) => (),
     }
+
+    let append = match matches.get_one::<String>("add-pixel") {
+        Some(tracking_url) => Some(get_pixel_element(tracking_url, &message)),
+        None => None,
+    };
 
     if matches.get_flag("generate-html") {
         eml = eml.html_body(text_body_as_html(&message, append));
