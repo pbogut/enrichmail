@@ -94,9 +94,9 @@ fn text_body_as_html(message: &Message, append: Option<String>) -> String {
     )
 }
 
-fn transform_address(address: Addr) -> b_headers::address::Address {
-    let name = match address.name.clone() {
-        Some(name) => Some(name.to_owned()),
+fn transform_address<'a>(address: &'a Addr) -> b_headers::address::Address<'a> {
+    let name = match address.name {
+        Some(ref name) => Some(name.as_ref()),
         None => None,
     };
     b_headers::address::Address::new_address(name, address.address.as_ref().unwrap().to_owned())
@@ -104,9 +104,11 @@ fn transform_address(address: Addr) -> b_headers::address::Address {
 
 fn copy_headers<'a>(mut dest: MessageBuilder<'a>, source: &'a Message) -> MessageBuilder<'a> {
     for header in source.headers() {
-        let maybe_header = match header.value().clone() {
+        let maybe_header = match header.value() {
             HeaderValue::Address(address) => Some(HeaderType::Address(transform_address(address))),
-            HeaderValue::Text(text) => Some(HeaderType::Text(b_headers::text::Text::new(text))),
+            HeaderValue::Text(text) => {
+                Some(HeaderType::Text(b_headers::text::Text::new(text.as_ref())))
+            }
             HeaderValue::DateTime(datetime) => Some(HeaderType::Date(b_headers::date::Date::new(
                 datetime.to_timestamp(),
             ))),
@@ -115,7 +117,7 @@ fn copy_headers<'a>(mut dest: MessageBuilder<'a>, source: &'a Message) -> Messag
             HeaderValue::AddressList(addresses) => {
                 let mut new_addresses = vec![];
                 addresses.iter().for_each(|address| {
-                    let new_address = transform_address(address.clone());
+                    let new_address = transform_address(address);
                     new_addresses.push(new_address);
                 });
                 Some(HeaderType::Address(b_headers::address::Address::List(
@@ -231,7 +233,7 @@ fn get_file_name(attachment: &MessagePart) -> String {
     let mut result = String::new();
     attachment.headers().into_iter().for_each(|header| {
         if let HeaderName::Rfc(RfcHeader::ContentDisposition) = header.name {
-            match header.value.clone() {
+            match &header.value {
                 HeaderValue::ContentType(content_type) => {
                     result = content_type.attribute("filename").unwrap().to_owned();
                 }
@@ -246,7 +248,7 @@ fn get_content_type(attachment: &MessagePart) -> String {
     let mut result = String::new();
     attachment.headers().into_iter().for_each(|header| {
         if let HeaderName::Rfc(RfcHeader::ContentType) = header.name {
-            match header.value.clone() {
+            match &header.value {
                 HeaderValue::ContentType(content_type) => {
                     result.push_str(content_type.ctype().to_owned().as_str());
                     if let Some(subtype) = content_type.subtype() {
@@ -268,10 +270,10 @@ fn copy_attachments<'a>(mut dest: MessageBuilder<'a>, source: &'a Message) -> Me
 
         match &attachment.body {
             PartType::Binary(body) => {
-                dest = dest.binary_attachment(content_type, file_name, body.clone());
+                dest = dest.binary_attachment(content_type, file_name, body.as_ref());
             }
             PartType::Text(body) => {
-                dest = dest.text_attachment(content_type, file_name, body.clone());
+                dest = dest.text_attachment(content_type, file_name, body.as_ref());
             }
             _ => (),
         }
