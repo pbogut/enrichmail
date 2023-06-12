@@ -128,7 +128,10 @@ fn copy_headers<'a>(mut dest: MessageBuilder<'a>, source: &'a Message) -> Messag
             HeaderValue::GroupList(group_list) => {
                 todo!("Group list not implemented {:?}", group_list)
             }
-            HeaderValue::TextList(text_list) => todo!("Text list not implemented {:?}", text_list),
+            HeaderValue::TextList(text_list) => {
+                let text = text_list.join("\t\n");
+                Some(HeaderType::Text(b_headers::text::Text::new(text)))
+            }
             HeaderValue::Empty => todo!("Empty not implemented"),
         };
         match maybe_header {
