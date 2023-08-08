@@ -16,6 +16,9 @@ fn cli() -> Command {
         .about("Email enrich tool for mutt")
         .args(vec![
             arg!(<FILE> "path to email file  (use '-' for stdin)"),
+            arg!(--"get-message-id" "Prints message id of given mail"),
+            arg!(--"get-subject" "Prints subject of given mail"),
+            arg!(--"get-from-email" "Prints from email of given mail"),
             arg!(--"html-preview" "Generate html from markdown in text body and prints it"),
             arg!(--"generate-html" "Generate html body from markdown in text body"),
             arg!(--"add-pixel" <BASE_URL> "Add tracking pixel to html body")
@@ -41,6 +44,30 @@ fn main() {
     };
 
     let message = Message::parse(file.as_slice()).unwrap();
+
+    if matches.get_flag("get-message-id") {
+        println!("{}", message.message_id().unwrap_or(""));
+        return;
+    }
+
+    if matches.get_flag("get-subject") {
+        println!("{}", message.subject().unwrap_or(""));
+        return;
+    }
+
+    if matches.get_flag("get-from-email") {
+        match message.from() {
+            HeaderValue::Address(from) => {
+                let email = from
+                    .address
+                    .clone()
+                    .map_or_else(String::new, std::borrow::Cow::into_owned);
+                println!("{}", email);
+            }
+            _ => println!(),
+        }
+        return;
+    }
 
     if matches.get_flag("html-preview") {
         println!("{}", text_body_as_html(&message, None));
