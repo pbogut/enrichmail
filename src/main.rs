@@ -94,8 +94,20 @@ fn text_body(message: &Message) -> String {
     message.body_text(0).unwrap().to_owned().to_string()
 }
 
+fn pre_markdown(text: &str) -> String {
+    let mut result = String::new();
+    text.lines().for_each(|line| {
+        // append two spaces to force line break
+        result.push_str(&format!("{line}  \n"));
+    });
+    result
+}
+
 fn text_body_as_html(message: &Message, append: Option<String>) -> String {
-    let body = markdown_to_html(text_body(&message).as_str(), &ComrakOptions::default());
+    let body = markdown_to_html(
+        &pre_markdown(&text_body(&message)),
+        &ComrakOptions::default(),
+    );
     let body_append = match append {
         Some(append) => append,
         None => "".to_owned(),
