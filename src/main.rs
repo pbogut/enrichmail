@@ -1,12 +1,10 @@
 use base64::{engine::general_purpose, Engine as _};
 use clap::{arg, Command};
 use comrak::{markdown_to_html, ComrakOptions};
-use imap;
 use mail_builder::headers as b_headers;
 use mail_builder::headers::HeaderType;
 use mail_builder::MessageBuilder;
 use mail_parser::{Addr, HeaderName, HeaderValue, Message, MessagePart, PartType, RfcHeader};
-use native_tls;
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
@@ -38,10 +36,9 @@ fn cli() -> Command {
 fn main() {
     let matches = cli().get_matches();
 
-    let file = match matches.get_one::<String>("FILE") {
-        Some(file_path) => get_email_content(file_path),
-        None => panic!("No email file provided"),
-    };
+    let file = matches
+        .get_one::<String>("FILE")
+        .map_or_else(|| panic!("No email file provided"), get_email_content);
 
     let message = Message::parse(file.as_slice()).unwrap();
 
@@ -78,10 +75,9 @@ fn main() {
 
     handle_put_email_on_imap_server(&eml, &message, &matches);
 
-    let append = match matches.get_one::<String>("add-pixel") {
-        Some(tracking_url) => Some(get_pixel_element(tracking_url, &message)),
-        None => None,
-    };
+    let append = matches
+        .get_one::<String>("add-pixel")
+        .map(|tracking_url| get_pixel_element(tracking_url, &message));
 
     if matches.get_flag("generate-html") {
         eml = eml.html_body(text_body_as_html(&message, append));
@@ -91,7 +87,7 @@ fn main() {
 }
 
 fn text_body(message: &Message) -> String {
-    message.body_text(0).unwrap().to_owned().to_string()
+    message.body_text(0).unwrap().to_string()
 }
 
 fn pre_markdown(text: &str) -> String {
@@ -105,13 +101,10 @@ fn pre_markdown(text: &str) -> String {
 
 fn text_body_as_html(message: &Message, append: Option<String>) -> String {
     let body = markdown_to_html(
-        &pre_markdown(&text_body(&message)),
+        &pre_markdown(&text_body(message)),
         &ComrakOptions::default(),
     );
-    let body_append = match append {
-        Some(append) => append,
-        None => "".to_owned(),
-    };
+    let body_append = append.map_or_else(String::new, |append| append);
     format!(
         r#"
         <html>
@@ -134,11 +127,8 @@ fn text_body_as_html(message: &Message, append: Option<String>) -> String {
 }
 
 fn transform_address<'a>(address: &'a Addr) -> b_headers::address::Address<'a> {
-    let name = match address.name {
-        Some(ref name) => Some(name.as_ref()),
-        None => None,
-    };
-    b_headers::address::Address::new_address(name, address.address.as_ref().unwrap().to_owned())
+    let name = address.name.as_ref().map(AsRef::as_ref);
+    b_headers::address::Address::new_address(name, address.address.as_ref().unwrap().clone())
 }
 
 fn copy_headers<'a>(mut dest: MessageBuilder<'a>, source: &'a Message) -> MessageBuilder<'a> {
@@ -155,10 +145,10 @@ fn copy_headers<'a>(mut dest: MessageBuilder<'a>, source: &'a Message) -> Messag
             HeaderValue::ContentType(_) => None,
             HeaderValue::AddressList(addresses) => {
                 let mut new_addresses = vec![];
-                addresses.iter().for_each(|address| {
+                for address in addresses.iter() {
                     let new_address = transform_address(address);
                     new_addresses.push(new_address);
-                });
+                }
                 Some(HeaderType::Address(b_headers::address::Address::List(
                     new_addresses,
                 )))
@@ -173,11 +163,8 @@ fn copy_headers<'a>(mut dest: MessageBuilder<'a>, source: &'a Message) -> Messag
             }
             HeaderValue::Empty => todo!("Empty not implemented"),
         };
-        match maybe_header {
-            Some(new_header) => {
-                dest = dest.header(header.name(), new_header);
-            }
-            None => (),
+        if let Some(new_header) = maybe_header {
+            dest = dest.header(header.name(), new_header);
         };
     }
     dest
@@ -197,15 +184,14 @@ fn get_email_content(file_path: &String) -> Vec<u8> {
     } else {
         let mut file_content = vec![];
         let path = Path::new(file_path);
-        let mut fh = File::open(&path).expect("Unable to open file");
+        let mut fh = File::open(path).expect("Unable to open file");
         fh.read_to_end(&mut file_content).expect("Unable to read");
         file_content
     }
 }
 
 fn get_pixel_element(tracking_url: &String, message: &Message) -> String {
-    let encoded_id: String =
-        general_purpose::STANDARD_NO_PAD.encode(message.message_id().unwrap().to_owned());
+    let encoded_id: String = general_purpose::STANDARD_NO_PAD.encode(message.message_id().unwrap());
     let pixel_url = format!("{}/image/{}.gif", tracking_url, encoded_id);
     format!(
         r#"
@@ -224,7 +210,7 @@ fn put_email_on_imap_server(
     pass: &String,
 ) {
     let tls = native_tls::TlsConnector::builder().build().unwrap();
-    let client = imap::connect((server.to_owned(), port), server, &tls).unwrap();
+    let client = imap::connect((server.clone(), port), server, &tls).unwrap();
     let mut imap_session = client.login(user, pass).map_err(|e| e.0).unwrap();
 
     imap_session
@@ -233,13 +219,13 @@ fn put_email_on_imap_server(
             eml.write_to_vec().unwrap(),
             &[imap::types::Flag::Seen],
         )
-        .unwrap()
+        .unwrap();
 }
 
 fn get_builder_from_parser<'a>(message: &'a Message) -> MessageBuilder<'a> {
-    let mut eml = MessageBuilder::new().text_body(text_body(&message));
-    eml = copy_headers(eml, &message);
-    eml = copy_attachments(eml, &message);
+    let mut eml = MessageBuilder::new().text_body(text_body(message));
+    eml = copy_headers(eml, message);
+    eml = copy_attachments(eml, message);
     eml
 }
 
@@ -262,7 +248,7 @@ fn handle_put_email_on_imap_server(
         (Some(mailbox), Some(server), Ok(port), Some(user), Some(pass), generate_html) => {
             let mut eml_to_store = eml.clone();
             if generate_html {
-                eml_to_store = eml_to_store.html_body(text_body_as_html(&message, None))
+                eml_to_store = eml_to_store.html_body(text_body_as_html(message, None));
             };
             put_email_on_imap_server(eml_to_store, mailbox, server, port, user, pass);
         }
@@ -273,13 +259,10 @@ fn handle_put_email_on_imap_server(
 
 fn get_file_name(attachment: &MessagePart) -> String {
     let mut result = String::new();
-    attachment.headers().into_iter().for_each(|header| {
-        if let HeaderName::Rfc(RfcHeader::ContentDisposition) = header.name {
-            match &header.value {
-                HeaderValue::ContentType(content_type) => {
-                    result = content_type.attribute("filename").unwrap().to_owned();
-                }
-                _ => (),
+    attachment.headers().iter().for_each(|header| {
+        if header.name == HeaderName::Rfc(RfcHeader::ContentDisposition) {
+            if let HeaderValue::ContentType(content_type) = &header.value {
+                result = content_type.attribute("filename").unwrap().to_owned();
             };
         }
     });
@@ -288,17 +271,14 @@ fn get_file_name(attachment: &MessagePart) -> String {
 
 fn get_content_type(attachment: &MessagePart) -> String {
     let mut result = String::new();
-    attachment.headers().into_iter().for_each(|header| {
-        if let HeaderName::Rfc(RfcHeader::ContentType) = header.name {
-            match &header.value {
-                HeaderValue::ContentType(content_type) => {
-                    result.push_str(content_type.ctype().to_owned().as_str());
-                    if let Some(subtype) = content_type.subtype() {
-                        result.push_str("/");
-                        result.push_str(subtype);
-                    }
+    attachment.headers().iter().for_each(|header| {
+        if header.name == HeaderName::Rfc(RfcHeader::ContentType) {
+            if let HeaderValue::ContentType(content_type) = &header.value {
+                result.push_str(content_type.ctype().to_owned().as_str());
+                if let Some(subtype) = content_type.subtype() {
+                    result.push('/');
+                    result.push_str(subtype);
                 }
-                _ => (),
             };
         }
     });
@@ -307,8 +287,8 @@ fn get_content_type(attachment: &MessagePart) -> String {
 
 fn copy_attachments<'a>(mut dest: MessageBuilder<'a>, source: &'a Message) -> MessageBuilder<'a> {
     for attachment in source.attachments() {
-        let content_type = get_content_type(&attachment);
-        let file_name = get_file_name(&attachment);
+        let content_type = get_content_type(attachment);
+        let file_name = get_file_name(attachment);
 
         match &attachment.body {
             PartType::Binary(body) => {
